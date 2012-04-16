@@ -983,6 +983,54 @@ exports.Class = class Class extends Base
     klass = new Assign @variable, klass if @variable
     klass.compile o
 
+#### AssignConst
+
+# The **AssignConst** is used to declare a constant with the
+# specified value.
+exports.AssignConst = class AssignConst extends Base
+  constructor: (@variable, @value, options) ->
+    @subpattern = options and options.subpattern
+    forbidden = (name = @variable.unwrapAll().value) in STRICT_PROSCRIBED
+    if forbidden
+      throw SyntaxError "constant name may not be \"#{name}\""
+
+  children: ['variable', 'value']
+
+  isStatement: (o) ->
+    #o?.level is LEVEL_TOP and @context? and "?" in @context
+    # 'const x=4' is *always* a statement
+    return true
+
+  assigns: (name) ->
+    @[if @context is 'object' then 'value' else 'variable'].assigns name
+
+  unfoldSoak: (o) ->
+    unfoldSoak o, this, 'variable'
+
+  # const declarations are pureStatements and so 'return const x=4' is
+  # invalid javascript.  Since it doesn't ever make sense to use constants
+  # as expressions, throw an error
+  makeReturn: (res) ->
+    throw new SyntaxError "\"const #{@variable.compile res} = ...\" is a pureStatement and cannot be used in a return statement."
+
+  # Compile an assignment, Keep track of the name of the base object
+  # we've been assigned to, for correct internal references. Add the 
+  # constant to the current scope so it doesn't get declared.
+  compileNode: (o) ->
+    name = @variable.compile o, LEVEL_LIST
+    unless @context
+      # TODO: things like 'const foo.bar = 4' aren't allowed.  We need to 
+      # filter more harshly than isAssignable()
+      unless (varBase = @variable.unwrapAll()).isAssignable()
+        throw SyntaxError "\"#{ @variable.compile o }\" cannot be assigned in a const expression."
+      unless varBase.hasProperties?()
+        o.scope.add name, 'const'
+    if @value instanceof Code and match = METHOD_DEF.exec name
+      @value.klass = match[1] if match[1]
+      @value.name  = match[2] ? match[3] ? match[4] ? match[5]
+    val = @tab + "const #{name} = #{@value.compile o, LEVEL_LIST}"
+    return val
+
 #### Assign
 
 # The **Assign** is used to assign a local variable to value, or to set the

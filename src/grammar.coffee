@@ -79,6 +79,7 @@ grammar =
     o 'Return'
     o 'Comment'
     o 'STATEMENT',                              -> new Literal $1
+    o 'AssignConst'
   ]
 
   # All the different types of expressions in our language. The basic unit of
@@ -131,6 +132,12 @@ grammar =
       val = new Literal $1
       val.isUndefined = yes if $1 is 'undefined'
       val
+  ]
+
+  # Assignment of a value to a constant
+
+  AssignConst: [
+    o 'CONST Assignable = Expression',           -> new AssignConst $2, $4
   ]
 
   # Assignment of a variable, property, or index to a value.
@@ -571,6 +578,7 @@ operators = [
   ['right',     'FORIN', 'FOROF', 'BY', 'WHEN']
   ['right',     'IF', 'ELSE', 'FOR', 'WHILE', 'UNTIL', 'LOOP', 'SUPER', 'CLASS']
   ['right',     'POST_IF']
+  ['nonassoc',  'CONST']
 ]
 
 # Wrapping Up
