@@ -137,7 +137,7 @@ grammar =
   # Assignment of a value to a constant
 
   AssignConst: [
-    o 'CONST Assignable = Expression',           -> new AssignConst $2, $4
+    o 'CONST Identifier = Expression',           -> new AssignConst $2, $4
   ]
 
   # Assignment of a variable, property, or index to a value.
