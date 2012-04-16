@@ -884,7 +884,7 @@ exports.Class = class Class extends Base
     if @boundFuncs.length
       for bvar in @boundFuncs
         lhs = (new Value (new Literal "this"), [new Access bvar]).compile o
-        @ctor.body.unshift new Literal "#{lhs} = #{utility 'bind'}(#{lhs}, this)"
+        @ctor.body.unshift new Literal "#{lhs} = #{lhs}.bind(this)"
 
   # Merge the properties from a top-level object as prototypal properties
   # on the class.
@@ -1014,12 +1014,12 @@ exports.AssignConst = class AssignConst extends Base
     throw new SyntaxError "\"const #{@variable.compile res} = ...\" is a pureStatement and cannot be used in a return statement."
 
   # Compile an assignment, Keep track of the name of the base object
-  # we've been assigned to, for correct internal references. Add the 
+  # we've been assigned to, for correct internal references. Add the
   # constant to the current scope so it doesn't get declared.
   compileNode: (o) ->
     name = @variable.compile o, LEVEL_LIST
     unless @context
-      # TODO: things like 'const foo.bar = 4' aren't allowed.  We need to 
+      # TODO: things like 'const foo.bar = 4' aren't allowed.  We need to
       # filter more harshly than isAssignable()
       unless (varBase = @variable.unwrapAll()).isAssignable()
         throw SyntaxError "\"#{ @variable.compile o }\" cannot be assigned in a const expression."
@@ -1028,7 +1028,7 @@ exports.AssignConst = class AssignConst extends Base
     if @value instanceof Code and match = METHOD_DEF.exec name
       @value.klass = match[1] if match[1]
       @value.name  = match[2] ? match[3] ? match[4] ? match[5]
-    val = @tab + "const #{name} = #{@value.compile o, LEVEL_LIST}"
+    val = @tab + "const #{name} = #{@value.compile o, LEVEL_LIST};"
     return val
 
 #### Assign
