@@ -1190,6 +1190,38 @@ exports.Assign = class Assign extends Base
     code = "[].splice.apply(#{name}, [#{fromDecl}, #{to}].concat(#{valDef})), #{valRef}"
     if o.level > LEVEL_TOP then "(#{code})" else code
 
+#### Import
+
+# Import statements are a way to load external dependancies.
+# "import x.y as Y" is converted to "const Y = imports.x.y"
+# If no AS clause is given, the last identifier in the import chain is
+# used.  For example, "import x.y" produces "const y = imports.x.y"
+exports.Import = class Import extends Base
+  constructor: (@importPath, @asIdentifier) ->
+    # Either we specified what we want to import the library as, or
+    # we assume we want it as the last Accessor in @importPath
+    if @asIdentifier
+      @asIdentifier = @asIdentifier.compile()
+    else
+      if @importPath.properties.length > 0
+        # If we are to infer the name of the import path, it should be an Accessor
+        # with a name (as opposed to someting accessed by 'abc[xyz]'
+        lastAccessor = @importPath.properties[@importPath.properties.length - 1]
+        if not lastAccessor.name
+          throw new SyntaxError "\"#{@importPath.compile()}\" is not a valid import path."
+        @asIdentifier = lastAccessor.name.value
+      else
+        @asIdentifier = @importPath.base.value
+    # All imports are prefixed by 'import.', so build a new node with 'import' at the front
+    properties = @importPath.properties
+    properties.unshift new Access (new Literal @importPath.base.value)
+    @importPath = new Value (new Literal 'imports'), properties
+    # Return a AssignConst node of the form "const #{@asIdentifier} = #{@importPath}"
+    return new AssignConst (new Literal @asIdentifier), @importPath
+
+  children: ['importPath', 'asIdentifier']
+
+
 #### Code
 
 # A function definition. This is the only node that creates a new Scope.

@@ -80,6 +80,7 @@ grammar =
     o 'Comment'
     o 'STATEMENT',                              -> new Literal $1
     o 'AssignConst'
+    o 'Import'
   ]
 
   # All the different types of expressions in our language. The basic unit of
@@ -134,10 +135,17 @@ grammar =
       val
   ]
 
-  # Assignment of a value to a constant
+  # Import an external library
+  Import: [
+    o 'IMPORT SimpleAssignable',                      -> new Import $2
+    o 'IMPORT SimpleAssignable AS Identifier',        -> new Import $2, $4
+  ],
 
+  # Assignment of a value to a constant
   AssignConst: [
-    o 'CONST Identifier = Expression',           -> new AssignConst $2, $4
+    o 'CONST Identifier = Expression',                -> new AssignConst $2, $4
+    o 'CONST Identifier = TERMINATOR Expression',     -> new AssignConst $2, $5
+    o 'CONST Identifier = INDENT Expression OUTDENT', -> new AssignConst $2, $5
   ]
 
   # Assignment of a variable, property, or index to a value.
