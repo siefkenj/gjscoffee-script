@@ -99,6 +99,7 @@ grammar =
     o 'For'
     o 'Switch'
     o 'Class'
+    o 'GClass'
     o 'Throw'
   ]
 
@@ -304,6 +305,19 @@ grammar =
     o 'CLASS SimpleAssignable EXTENDS Expression',       -> new Class $2, $4
     o 'CLASS SimpleAssignable EXTENDS Expression Block', -> new Class $2, $4, $5
   ]
+  
+  # GClass is a duplicate of Class for constructing classes using
+  # Lang.Class from gjs
+  GClass: [
+    o 'GCLASS',                                           -> new GClass
+    o 'GCLASS Block',                                     -> new GClass null, null, $2
+    o 'GCLASS EXTENDS Expression',                        -> new GClass null, $3
+    o 'GCLASS EXTENDS Expression Block',                  -> new GClass null, $3, $4
+    o 'GCLASS SimpleAssignable',                          -> new GClass $2
+    o 'GCLASS SimpleAssignable Block',                    -> new GClass $2, null, $3
+    o 'GCLASS SimpleAssignable EXTENDS Expression',       -> new GClass $2, $4
+    o 'GCLASS SimpleAssignable EXTENDS Expression Block', -> new GClass $2, $4, $5
+  ]
 
   # Ordinary function invocation, or a chained series of calls.
   Invocation: [
@@ -311,6 +325,7 @@ grammar =
     o 'Invocation OptFuncExist Arguments',      -> new Call $1, $3, $2
     o 'SUPER',                                  -> new Call 'super', [new Splat new Literal 'arguments']
     o 'SUPER Arguments',                        -> new Call 'super', $2
+    o 'LOCALBIND Arguments',                    -> new Call 'localbind', $2
   ]
 
   # An optional existence check on a function.
@@ -584,9 +599,10 @@ operators = [
   ['nonassoc',  'INDENT', 'OUTDENT']
   ['right',     '=', ':', 'COMPOUND_ASSIGN', 'RETURN', 'THROW', 'EXTENDS']
   ['right',     'FORIN', 'FOROF', 'BY', 'WHEN']
-  ['right',     'IF', 'ELSE', 'FOR', 'WHILE', 'UNTIL', 'LOOP', 'SUPER', 'CLASS']
+  ['right',     'IF', 'ELSE', 'FOR', 'WHILE', 'UNTIL', 'LOOP', 'SUPER', 'CLASS', 'GCLASS']
   ['right',     'POST_IF']
   ['nonassoc',  'CONST']
+  ['right',  'LOCALBIND']
 ]
 
 # Wrapping Up

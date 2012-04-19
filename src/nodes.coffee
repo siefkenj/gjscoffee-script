@@ -480,7 +480,8 @@ exports.Call = class Call extends Base
   constructor: (variable, @args = [], @soak) ->
     @isNew    = false
     @isSuper  = variable is 'super'
-    @variable = if @isSuper then null else variable
+    @isLocalBind = variable is 'localbind'
+    @variable = if @isSuper or @isLocalBind then null else variable
 
   children: ['variable', 'args']
 
@@ -567,6 +568,8 @@ exports.Call = class Call extends Base
     args = (arg.compile o, LEVEL_LIST for arg in args).join ', '
     if @isSuper
       @superReference(o) + ".call(this#{ args and ', ' + args })"
+    else if @isLocalBind
+      "Lang.Bind(this, #{args})"
     else
       (if @isNew then 'new ' else '') + @variable.compile(o, LEVEL_ACCESS) + "(#{args})"
 
@@ -844,6 +847,150 @@ exports.Arr = class Arr extends Base
     for obj in @objects when obj.assigns name then return yes
     no
 
+#### GClass
+
+# The CoffeeScript class definition but for use with Lang.Class.
+# Initialize a **GClass** with its name, an optional superclass, and a
+# list of prototype property assignments.
+exports.GClass = class GClass extends Base
+  constructor: (@variable, @parent, @body = new Block) ->
+    @boundFuncs = []
+    @body.classBody = yes
+
+  children: ['variable', 'parent', 'body']
+
+  # Figure out the appropriate name for the constructor function of this class.
+  determineName: ->
+    return null unless @variable
+    decl = if tail = last @variable.properties
+      tail instanceof Access and tail.name.value
+    else
+      @variable.base.value
+    if decl in STRICT_PROSCRIBED
+      throw SyntaxError "variable name may not be #{decl}"
+    decl and= IDENTIFIER.test(decl) and decl
+
+  # For all `this`-references and bound functions in the class definition,
+  # `this` is the Class being constructed.
+  setContext: (name) ->
+    @body.traverseChildren false, (node) ->
+      return false if node.classBody
+      if node instanceof Literal and node.value is 'this'
+        node.value    = name
+      else if node instanceof Code
+        node.klass    = name
+        node.context  = name if node.bound
+
+  # Ensure that all functions bound to the instance are proxied in the
+  # constructor.
+  addBoundFunctions: (o) ->
+    if @boundFuncs.length
+      # If we have functions to bind, bind them all in the @ctorBind function
+      @ctorBind = new Code
+      @ctorBind.noReturn = yes
+      for bvar in @boundFuncs
+        lhs = (new Value (new Literal "this"), [new Access bvar]).compile o
+        @ctorBind.body.unshift new Literal "#{lhs} = #{lhs}.bind(this)"
+
+      # If we have functions to bind, we need to add @ctorBind to the methodlist
+      if not @ctor
+        @ctor = @makeConstructor()
+        @body.expressions.unshift new Assign (new Literal '_init'), @ctor, 'object'
+      initBind = new Assign (new Literal '_initBind'), @ctorBind, 'object'
+      @body.expressions.unshift initBind
+      @ctor.body.unshift new Literal 'this._initBind.call(this)'
+
+
+  # Return a list of Assign objects that correspond to 
+  # items that should be added to the prototype of the class
+  addProperties: (node, name, o) ->
+    props = node.base.properties[..]
+    exprs = while assign = props.shift()
+      if assign instanceof Assign
+        base = assign.variable.base
+        #delete assign.context
+        func = assign.value
+        if base.value in ['constructor', '_init']
+          if @ctor
+            throw new Error 'cannot define more than one constructor in a class'
+          if func.bound
+            throw new Error 'cannot define a constructor as a bound function'
+          # for Lang.Class classes, '_init' is always the name of the constructor
+          assign.variable = new Literal '_init'
+          if func instanceof Code
+            @ctor = func
+          else
+            @externalCtor = func
+            @ctor = @makeConstructor()
+            assign.value = @ctor
+        else
+          if assign.variable.this
+            func.static = yes
+            if func.bound
+              func.context = name
+          else
+            # assign.variable = new Value(new Literal(name), [(new Access new Literal 'prototype'), new Access base ])
+            assign.variable = new Value(base)
+            if func instanceof Code and func.bound
+              @boundFuncs.push base
+              func.bound = no
+      assign
+    compact exprs
+  
+  # Returns either an empty constructor, or a constructor
+  # that calls @externalCtor if @externalCtor is set
+  makeConstructor: ->
+    ctor = new Code
+    ctor.noReturn = yes
+    if @externalCtor
+      ctor.body.push new Literal "#{@externalCtor.compileNode null}.apply(this, arguments)"
+    return ctor
+
+  # Walk the body of the class, looking for prototype properties to be converted.
+  walkBody: (name, o) ->
+    @traverseChildren false, (child) =>
+      return false if child instanceof Class
+      if child instanceof Block
+        for node, i in exps = child.expressions
+          if node instanceof Value and node.isObject(true)
+            exps[i] = @addProperties node, name, o
+        child.expressions = exps = flatten exps
+
+  createMethodListObject: ->
+    # We only want assings in an object context to be used as
+    # methods in the prototype
+    return (a for a in @body.expressions when a.context is 'object')
+
+  # Instead of generating the JavaScript string directly, we build up the
+  # equivalent syntax tree and compile that, in pieces. You can see the
+  # constructor, property assignments, and inheritance getting built out below.
+  compileNode: (o) ->
+    decl  = @determineName()
+    name  = decl or '_Class'
+    name = "_#{name}" if name.reserved
+    lname = new Literal name
+
+    # Instead of appending all functions to @body, we're
+    # going to put them in a big list of assigns
+    @methodList = []
+
+    @setContext name
+    @walkBody name, o
+    @body.spaced = yes
+    @addBoundFunctions o
+
+    # Set up the object to be passed to Lang.Class
+    # The object starts out in the form {Name: ..., Extends: ..., ...}
+    methodList = [new Assign (new Literal 'Name'), (new Literal "'#{name}'"), 'object']
+    methodList.push (new Assign (new Literal 'Extends'), @parent, 'object') if @parent
+    methodList = methodList.concat @createMethodListObject()
+    methodsObj = new Obj methodList
+
+    # Create the const name = Lang.Class(methodsObj) code
+    klass = new Call (new Literal 'new Lang.Class'), [methodsObj]
+    klass = new AssignConst (new Literal name), klass
+    return klass.compile o
+
 #### Class
 
 # The CoffeeScript class definition.
@@ -997,9 +1144,8 @@ exports.AssignConst = class AssignConst extends Base
   children: ['variable', 'value']
 
   isStatement: (o) ->
-    #o?.level is LEVEL_TOP and @context? and "?" in @context
-    # 'const x=4' is *always* a statement
-    return true
+    # 'const x=4' is *always* a statement, and so needs a semicolon
+    return false
 
   assigns: (name) ->
     @[if @context is 'object' then 'value' else 'variable'].assigns name
@@ -1028,7 +1174,7 @@ exports.AssignConst = class AssignConst extends Base
     if @value instanceof Code and match = METHOD_DEF.exec name
       @value.klass = match[1] if match[1]
       @value.name  = match[2] ? match[3] ? match[4] ? match[5]
-    val = @tab + "const #{name} = #{@value.compile o, LEVEL_LIST};"
+    val = @tab + "const #{name} = #{@value.compile o, LEVEL_LIST}"
     return val
 
 #### Assign
