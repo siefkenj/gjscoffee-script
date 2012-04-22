@@ -50,7 +50,7 @@ task 'install', 'install CoffeeScript into /usr/local (or --prefix)', (options) 
   base = options.prefix or '/usr/local'
   lib  = "#{base}/lib/coffee-script"
   bin  = "#{base}/bin"
-  node = "~/.node_libraries/coffee-script"
+  node = "~/.node_libraries/gjscoffee-script"
   console.log   "Installing CoffeeScript to #{lib}"
   console.log   "Linking to #{node}"
   console.log   "Linking 'gjscoffee' to #{bin}/gjscoffee"
